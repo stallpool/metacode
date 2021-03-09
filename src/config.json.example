@@ -1,0 +1,12 @@
+{
+   "gitlab": {
+      "url":   "string|https://gitlab.com",
+      "token": "string|accessToken="
+   },
+   "perforce": {
+      "user":  "string|userName"
+   },
+   "ldap_server": "string|ldap.example:9663",
+   "ldap_domain": "string|ldap.example",
+   "session_expiration_ms": number|86400000,
+}

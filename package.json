@@ -1,0 +1,25 @@
+{
+  "name": "metacode",
+  "version": "1.0.0",
+  "description": "Meta Code for Search and Analysis",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo 'No Test'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stallpool/metacode.git"
+  },
+  "author": "Seven Lju",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/stallpool/metacode/issues"
+  },
+  "homepage": "https://github.com/stallpool/metacode#readme",
+  "devDependencies": {
+    "ldapjs": "^2.2.4",
+    "uuid": "^8.3.2",
+    "webpack": "^5.24.4",
+    "webpack-cli": "^4.5.0"
+  }
+}
