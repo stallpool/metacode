@@ -10,14 +10,16 @@ const P4USER = ((i_env.config.perforce || {}).user) || process.env.P4USER || pro
 const api = {
    search: async (options) => {
       options = options || {};
-      if (!options.query || !options.path) throw 'bad request';
+      if (!options.query || !options.path || !options.server) throw 'bad request';
       if (options.changenumber) options.changenumber = parseInt(options.changenumber, 10);
       const prefix = P4USER?`P4USER=${P4USER} `:'';
       const suffix = options.changenumber?`@${options.changenumber}`:''
       // shell safe transform: 'test' -> '"'"'test'"'"'
-      const query = options.query.replace(/'/g, '\'"\'"\'');
+      const query = options.query.replace(/'/g, '\'"\'"\'').replace(/[\n]/g, '\\n');
+      // TODO: normalize query, path, server to make sure safe
+      // TODO: how to deal with long line, for example json in one line, where length > 1G
       const cmd = (
-         `${prefix}${P4BIN} grep -n -A 1 -B 1 -e '${options.query}' ` +
+         `${prefix} P4PORT=${options.server} ${P4BIN} grep -n -A 1 -B 1 -e '${query}' ` +
          `${options.path}${suffix}`
       );
       const env = { err: false };

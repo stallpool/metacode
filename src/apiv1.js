@@ -25,12 +25,13 @@ function parseSearchTarget(target) {
    } else {
       parts.push(last);
    }
-   tobj.path = parts.join('/');
    switch(tobj.protocol) {
    case 'p4:':
-      tobj.path = `//${tobj.path}`;
+      tobj.server = parts.shift();
+      tobj.path = `//${parts.join('/')}`;
       break;
    case 'gitlab:':
+      tobj.path = parts.join('/');
       break;
    default:
       return null;
@@ -73,14 +74,27 @@ const api = {
             page: env.page,
             n: env.n,
             query: query,
+            server: `${tobj.server}`,
             path: `${tobj.path}/...`,
          };
          if (env.ref) config.changenumber = `${parseInt(env.ref, 10)}`;
-         i_log.info(options.json.username, '--> search: (p4)', config.path, config.changenumber || '', '|', query);
+         i_log.info(
+            options.json.username,
+            '--> search: (p4)',
+            config.server,
+            config.path,
+            config.changenumber || '',
+            '|', query
+         );
          i_p4.search(config).then((data) => {
             i_web.rjson(res, data);
          }).catch((err) => {
-            i_log.error(options.json.username, '-> search: (p4)', config.path, config.changenumber || '', '|', query, err);
+            i_log.error(
+               options.json.username,
+               '-> search: (p4)',
+               config.server, config.path, config.changenumber || '',
+               '|', query, err
+            );
             i_web.rjson(res, { error: 1 });
          });
          break;
@@ -94,11 +108,21 @@ const api = {
             project_id: tobj.path,
          };
          if (env.ref) config.ref = env.ref;
-         i_log.info(options.json.username, '--> search: (gitlab)', config.project_id, config.ref || '', '|', query);
+         i_log.info(
+            options.json.username,
+            '--> search: (gitlab)',
+            config.project_id, config.ref || '',
+            '|', query
+         );
          i_gitlab.search(config).then((data) => {
             i_web.rjson(res, data);
          }).catch((err) => {
-            i_log.error(options.json.username, '--> search: (gitlab)', config.project_id, config.ref || '', '|', query, err);
+            i_log.error(
+               options.json.username,
+               '--> search: (gitlab)',
+               config.project_id, config.ref || '',
+               '|', query, err
+            );
             i_web.rjson(res, { error: 1 });
          });
          break;
