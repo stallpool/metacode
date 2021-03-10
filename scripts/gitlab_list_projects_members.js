@@ -84,7 +84,9 @@ once(1, [], (L) => {
          await fill(item);
       }
    })().then(() => {
-      console.log(JSON.stringify(L));
+      L.forEach((item) => {
+         console.log(JSON.stringify(item));
+      });
    }).catch((err) => {
       console.error(err);
    });

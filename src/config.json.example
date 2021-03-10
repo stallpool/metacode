@@ -1,4 +1,5 @@
 {
+   "admins": ["username"],
    "gitlab": {
       "url":   "string|https://gitlab.com",
       "token": "string|accessToken="

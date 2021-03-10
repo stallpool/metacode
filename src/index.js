@@ -175,3 +175,6 @@ const server = createServer({
 server.listen(i_env.server.port, i_env.server.host, () => {
    console.log(`METACODE SERVER is listening at ${i_env.server.host}:${i_env.server.port}`);
 });
+
+const i_project = require('./project');
+i_project.startWatch() && console.log('Watching [PROJECT] list ...');

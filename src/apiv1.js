@@ -10,6 +10,8 @@ const i_auth = (
 );
 const i_p4 = require('./p4');
 const i_gitlab = require('./gitlab');
+const i_project = require('./project');
+const i_user = require('./user');
 const i_log = require('./logger');
 
 function parseSearchTarget(target) {
@@ -84,7 +86,7 @@ const api = {
             config.server,
             config.path,
             config.changenumber || '',
-            '|', query
+            '--|', query
          );
          i_p4.search(config).then((data) => {
             i_web.rjson(res, data);
@@ -93,14 +95,25 @@ const api = {
                options.json.username,
                '-> search: (p4)',
                config.server, config.path, config.changenumber || '',
-               '|', query, err
+               '-!|', query, err
             );
             i_web.rjson(res, { error: 1 });
          });
          break;
       }
       case 'gitlab:': {
-         // TODO: transform path to project_id
+         const origin_path = tobj.path;
+         if (tobj.path.startsWith('#')) {
+            // e.g. gitlab://#123/@master
+            tobj.path = tobj.path.substring(1);
+         } else {
+            // e.g. gitlab://path/to/repo/@master
+            const project = i_project.listByServer('gitlab').filter(
+               (project) => project.path === tobj.path
+            )[0];
+            if (!project) return i_web.e400(res);
+            tobj.path = project.id;
+         }
          const config = {
             page: env.page,
             n: env.n,
@@ -111,8 +124,8 @@ const api = {
          i_log.info(
             options.json.username,
             '--> search: (gitlab)',
-            config.project_id, config.ref || '',
-            '|', query
+            config.project_id, origin_path, config.ref || '',
+            '--|', query
          );
          i_gitlab.search(config).then((data) => {
             i_web.rjson(res, data);
@@ -121,7 +134,7 @@ const api = {
                options.json.username,
                '--> search: (gitlab)',
                config.project_id, config.ref || '',
-               '|', query, err
+               '-!|', query, err
             );
             i_web.rjson(res, { error: 1 });
          });

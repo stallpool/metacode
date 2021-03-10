@@ -20,5 +20,7 @@ function once(page, L, fn) {
 }
 
 once(1, [], (L) => {
-   console.log(JSON.stringify(L));
+   L.forEach((item) => {
+      console.log(JSON.stringify(item));
+   });
 });
