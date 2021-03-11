@@ -102,10 +102,16 @@ const api = {
          break;
       }
       case 'gitlab:': {
-         const origin_path = tobj.path;
+         env.origin_path = tobj.path;
          if (tobj.path.startsWith('#')) {
             // e.g. gitlab://#123/@master
-            tobj.path = tobj.path.substring(1);
+            tobj.path = parseInt(tobj.path.substring(1), 10);
+            const project = i_project.listByServer('gitlab').filter(
+               (project) => project.id === tobj.path
+            )[0];
+            // TODO: prevent search in unregistered projects?
+            // if (!project) return i_web.e400(res);
+            if (project) env.origin_path = project.path;
          } else {
             // e.g. gitlab://path/to/repo/@master
             const project = i_project.listByServer('gitlab').filter(

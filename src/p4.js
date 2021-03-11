@@ -8,18 +8,30 @@ const P4BIN = process.env.P4BIN || 'p4';
 const P4USER = ((i_env.config.perforce || {}).user) || process.env.P4USER || process.env.USER;
 
 const api = {
+   listDirs: async (server, path, rev) => {
+      const prefix = P4USER?`P4USER=${P4USER} `:'';
+      const suffix = rev?`@${rev}`:'';
+      const cmd = `${prefix}P4PORT=${server} ${P4BIN} dirs ${path}/*${suffix}`;
+      env = { err: false, items: [] };
+      await i_exec.act(cmd, (line) => {
+         env.items.push(line);
+      }).catch((err) => {
+         throw err;
+      });
+      return env.items;
+   },
    search: async (options) => {
       options = options || {};
       if (!options.query || !options.path || !options.server) throw 'bad request';
       if (options.changenumber) options.changenumber = parseInt(options.changenumber, 10);
       const prefix = P4USER?`P4USER=${P4USER} `:'';
-      const suffix = options.changenumber?`@${options.changenumber}`:''
+      const suffix = options.changenumber?`@${options.changenumber}`:'';
       // shell safe transform: 'test' -> '"'"'test'"'"'
       const query = options.query.replace(/'/g, '\'"\'"\'').replace(/[\n]/g, '\\n');
       // TODO: normalize query, path, server to make sure safe
       // TODO: how to deal with long line, for example json in one line, where length > 1G
       const cmd = (
-         `${prefix} P4PORT=${options.server} ${P4BIN} grep -n -A 1 -B 1 -e '${query}' ` +
+         `${prefix}P4PORT=${options.server} ${P4BIN} grep -n -A 1 -B 1 -e '${query}' ` +
          `${options.path}${suffix}`
       );
       const env = { err: false };
