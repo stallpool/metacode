@@ -1,0 +1,659 @@
+<html>
+<body>
+<style>
+.vcode-breadcrumb {
+   background-color: white;
+   border-bottom: 1px solid #ccc;
+   color: #ccc;
+   word-break: break-all;
+}
+.vcode-bclink {
+   margin: 0 8px;
+}
+.vcode-contents {
+   background-color: white;
+}
+.vcode-srcv-container {
+   display: flex;
+   flex-wrap: nowrap;
+   font-family: monospace;
+   overflow: auto;
+   height: 500px;
+}
+.vcode-srcv-lineno {
+   position: sticky;
+   z-index: 100;
+   left: 0;
+   flex: none;
+   width: 10px;
+   text-align: right;
+   padding-right: 3px;
+   color: #237893;
+}
+.vcode-srcv-lineno > div {
+   border-right: 1px solid #ccc;
+   background-color: white;
+   font-family: "Courier New", monospace;
+}
+.vcode-srcv-text {
+   flex: 1 0 auto;
+   background-color: white;
+}
+.vcode-srcv-text > div {
+   padding: 0 5px;
+   z-index: 5;
+   position: relative;
+   font-family: "Courier New", monospace;
+   white-space: pre;
+   tab-size: 4;
+}
+.vcode-fldv-search {
+   width: 100%;
+   max-width: 400px;
+   margin-top: 5px;
+   margin-bottom: 10px;
+   margin-left: 10px;
+}
+.vcode-fldv-search > input {
+   width: 100%;
+   margin-left: 5px;
+   margin-right: 2px;
+}
+
+.vcode-selection {
+   background-color: yellow;
+   opacity: 0.5;
+   z-index: 1;
+   left: 0;
+}
+
+.vcode-inputbox-container {
+   border: 1px solid #dddddd;
+   display: flex;
+   align-items: center;
+   width: 100%;
+}
+.vcode-inputbox-container > div {
+   flex: 1 0 auto;
+   overflow-y: hidden;
+   background-color: white;
+   cursor: text;
+}
+.vcode-inputbox-container > button {
+   width: 100px;
+}
+.vcode-inputbox-btn {
+   border: 2px solid #0079b8;
+   background-color: #0079b8;
+   color: white;
+}
+.vcode-inputbox-autocomplete {
+    position: absolute;
+    background-color: white;
+    border: 1px solid #dddddd;
+    z-index: 2000;
+}
+.vcode-inputbox-autotips {
+    border-left: 1px solid #dddddd;
+    border-bottom: 1px solid #dddddd;
+    position: absolute;
+}
+</style>
+<div id="hello"></div>
+<script>
+var MOUSE_ICON = (
+   '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewbox="0 0 36 36">' +
+   '<path d="M18,34A10,10,0,0,1,8,24V12a10,10,0,0,1,20,0V24A10,10,0,0,1,18,34ZM18,4a8,8,0,0,0-8,8V24a8,8,0,0,0,16,0V12A8,8,0,0,0,18,4Z" fill="fill"/>' +
+   '<path d="M18,15a1,1,0,0,1-1-1V10a1,1,0,0,1,2,0v4A1,1,0,0,1,18,15Z" fill="black"/>' +
+   '<path d="M18,2A10,10,0,0,0,8,12V24a10,10,0,0,0,20,0V12A10,10,0,0,0,18,2Zm1.3,11.44a1.3,1.3,0,0,1-2.6,0V10a1.3,1.3,0,0,1,2.6,0Z" fill="white" stroke="black"/>' +
+   '<path d="M18,2A10,10,0,0,0,8,12L8,18L18,18Z">' +
+   '<animate attributeName="fill" values="white;black;white" dur="0.3s" repeatCount="indefinite"/>' +
+   '</path></svg>'
+);
+
+var funcEnv = {};
+function Bounce(name, timeout, fn) {
+   var obj = funcEnv[name];
+   if (obj) {
+      clearTimeout(obj.timer);
+      obj.timer = setTimeout(() => { obj.fn(); }, timeout);
+   } else {
+      obj = {};
+      obj.fn = fn;
+      obj.timer = setTimeout(() => { obj.fn(); }, timeout);
+      funcEnv[name] = obj;
+   }
+}
+
+function IViewer_select(selector) {
+   if (selector === 'window') return window;
+   if (selector === 'document') return document;
+   return document.querySelector(selector);
+}
+
+function IViewer_On(selector, name, fn) {
+   var that = this;
+   var elem = this._select(selector);
+   var genFn = function (evt) { fn(evt, that, elem); };
+   elem.addEventListener(name, genFn);
+   this._events[selector] = this._events[selector] || {};
+   this._events[selector][name] = genFn;
+}
+
+function IViewer_Off(selector, name) {
+   if (!this._events[selector]) return;
+   if (!this._events[selector][name]) return;
+   var genFn = this._events[selector][name];
+   var elem = this._select(selector);
+   elem.removeEventListener(name, genFn);
+   delete this._events[selector][name];
+   if (!Object.keys(this._events[selector]).length) {
+      delete this._events[selector];
+   }
+}
+
+function IViewer() {
+   this._events = {};
+   this._select = IViewer_select;
+   this.On = IViewer_On;
+   this.Off = IViewer_Off;
+}
+
+const chSpace = /\s/;
+const chPunc = /[`~!@#$%\^&*\-+=\\|:;'"<>,./?]/;
+const chPair = /[()\[\]{}<>]/;
+const chStop = /[\s`~!@#$%\^&*()\-+=\\|\[\]{}:;"'<>,./?]/;
+
+function Act(piece, actFn) {
+   this.base = piece;
+   this.actFn = actFn;
+}
+
+function extract(lines, Y, X, acts) {
+   var bestPiece = new Piece();
+   while (acts.length) {
+      var act = acts.shift();
+      var p = act.actFn(act.base, lines, Y, X, acts);
+      if (!p) continue;
+      if (bestPiece.score < p.score) {
+         bestPiece = p;
+      }
+   }
+   return bestPiece;
+}
+
+function lv0activator(basePiece, lines, Y, X, acts) {
+   var p = new Piece();
+   basePiece.copyTo(p);
+   var line = lines[Y - 1];
+   if (line) {
+      var ch = line.charAt(X - 1);
+      var hit = false;
+      if (chSpace.test(ch)) {
+         hit = true;
+      }
+      if (hit) return p;
+      if (chPunc.test(ch)) {
+         hit = true;
+      }
+      if (chPair.test(ch)) {
+         hit = true;
+      }
+      if (hit) return p;
+      acts.push(new Act(p, lv1word));
+   }
+   return p;
+}
+
+function lv1word(basePiece, lines, Y, X, acts) {
+   if (X < 0) return;
+   var line = lines[Y - 1];
+   if (!line) return;
+   let st, ed;
+   for (st = X - 1; st > 0; st--) {
+      var ch = line.charAt(st - 1);
+      if (chStop.test(ch)) {
+         break;
+      }
+   }
+   st ++;
+   for (ed = X + 1; ed <= line.length; ed++) {
+      var ch = line.charAt(ed - 1);
+      if (chStop.test(ch)) {
+         break;
+      }
+   }
+   ed --;
+   var p = new Piece();
+   basePiece.copyTo(p);
+   p.startLineNumber = Y;
+   p.endLineNumber = Y;
+   p.startColumn = st;
+   p.endColumn = ed;
+   p.score += 1;
+   return p;
+}
+
+function Piece() {
+   this.startLineNumber = -1;
+   this.startColumn = -1;
+   this.endLineNumber = -1;
+   this.endColumn = -1;
+   this.last = false;
+   this.score = 0;
+   this.data = {};
+}
+Piece.prototype = {
+   isNull: function () { return this.startLineNumber <= 0; },
+   text: function (lines) {
+      // assume not isNull()
+      if (this.endLineNumber <= 0) return '';
+      let cur = this.endLineNumber;
+      let str = '';
+      str = lines[this.endLineNumber - 1] || '';
+      str = str.substring(0, this.endColumn);
+      if (this.startLineNumber === this.endLineNumber) {
+         return str.substring(this.startColumn - 1);
+      }
+      for (cur--; cur > this.startLineNumber; cur--) {
+         str = (lines[cur - 1] || '') + '\n' + str;
+      }
+      str = (
+         lines[this.startLineNumber - 1] || ''
+      ).substring(this.startColumn - 1) + '\n' + str;
+      return str;
+   },
+   copyTo: function (another) {
+      another.startLineNumber = this.startLineNumber;
+      another.startColumn = this.startColumn;
+      another.endLineNumber = this.endLineNumber;
+      another.endColumn = this.endColumn;
+      another.data = this.data;
+   }
+};
+
+function CodeIntelligence(env) {
+   this.env = env;
+   this.last = new Piece();
+}
+CodeIntelligence.prototype = {
+   Extract: function (lineNumber, column) {
+      if (this.last.data && this.inLast(lineNumber, column)) {
+         var lastPiece = this.last.data;
+         lastPiece.last = true;
+         return lastPiece;
+      }
+      var p = new Piece();
+      this.recordLast(lineNumber, column, lineNumber, column, p);
+      if (column <= 0) return p;
+
+      p = extract(this.env.lines, lineNumber, column, [new Act(p, lv0activator)]);
+
+      if (!p.isNull()) {
+         this.recordLast(
+            p.startLineNumber, p.startColumn,
+            p.endLineNumber, p.endColumn, p
+         );
+      }
+      return p;
+   }, // Extract
+   inLast: function (Y, X) {
+      if (Y < this.last.startLineNumber || Y > this.last.endLineNumber) {
+         return false;
+      }
+      if (Y == this.last.startLineNumber) {
+         if (X < this.last.startColumn) return false;
+      }
+      if (Y == this.last.endLineNumber) {
+         if (X > this.last.endColumn) return false;
+      }
+      return true;
+   }, // inLast
+   recordLast: function (stY, stX, edY, edX, piece) {
+      this.last.startLineNumber = stY;
+      this.last.startColumn = stX;
+      this.last.endLineNumber = edY;
+      this.last.endColumn = edX;
+      this.last.data = piece;
+   } // recordLast
+};
+
+function SourceViewer(container, text, url) {
+   IViewer.call(this);
+   this._skipNavigateToLine = false;
+   this.ui = {};
+   this.env = {
+      url: url,
+      text: text,
+      lines: []
+   };
+   this.lineXIndex = [];
+   this._codeIntelligence = new CodeIntelligence(this.env);
+   this.buildFrame(container);
+   this.buildText();
+   this.bindEvents();
+}
+SourceViewer.prototype = {
+   buildFrame: function (container) {
+      var div;
+      this.ui.container = container;
+      this.ui.self = document.createElement('div');
+      this.ui.self.className = 'vcode-srcv-container';
+
+      this.ui.lineNumber = document.createElement('div');
+      div = document.createElement('div');
+      div.className = 'vcode-srcv-lineno';
+      div.appendChild(this.ui.lineNumber);
+      this.ui.self.appendChild(div);
+
+      this.ui.lineText = document.createElement('div');
+      div = document.createElement('div');
+      div.className = 'vcode-srcv-text';
+      div.appendChild(this.ui.lineText);
+      this.ui.self.appendChild(div);
+
+      this.ui.container.appendChild(this.ui.self);
+
+      // use canvas to calculate position
+      // mouse position <--> text position
+      var canvas = document.createElement('canvas');
+      this.ui.pen = canvas.getContext('2d');
+   }, // buildFrame
+   buildText: function () {
+      var S = window.getComputedStyle(this.ui.lineNumber);
+      this.ui.pen.font = S.getPropertyValue('font') || '14px / 24px monospace';
+      this.env.lines = this.env.text.split('\n');
+      var lines = this.env.lines;
+      var lineNumberRect = this.ui.pen.measureText('' + (lines.length + 1));
+      this.ui.lineNumber.parentNode.style.width = (lineNumberRect.width + 10) + 'px';
+      var maxLineWidth = 0;
+      for (var i = 0, n = lines.length; i < n; i++) {
+         var line = lines[i];
+         var div;
+         div = document.createElement('div');
+         div.innerHTML = '' + (i + 1);
+         this.ui.lineNumber.appendChild(div);
+         div = document.createElement('div');
+         if (line) {
+            div.appendChild(document.createTextNode(line));
+         } else {
+            div.innerHTML = '&nbsp;';
+         }
+         var lineRect = this.ui.pen.measureText(line);
+         if (lineRect.width > maxLineWidth) maxLineWidth = lineRect.width;
+         this.ui.lineText.appendChild(div);
+      }
+      this.ui.lineText.style.width = (maxLineWidth + 10) + 'px';
+      this.Layout();
+      this.navgiateToLine(window.location.hash);
+
+      /*var that = this;
+      LoadScript('/monaco/vs/loader.js').then(() => {
+         (<any>window).require.config({ paths: { vs: `${ScriptBaseUrl}/monaco/vs` } });
+         (<any>window).require(['vs/editor/editor.main'], () => {
+            (<any>window).monaco.editor.setTheme('vs');
+            (<any>window).monaco.editor.colorize(that.text, guessLangFromExt(that.path)).then((text) => {
+               that.ui.lineText.innerHTML = text;
+               for (var i = 0, n = that.ui.lineText.children.length; i < n; i++) {
+                  var elem = that.ui.lineText.children[i];
+                  if (elem.offsetWidth > that.ui.lineText.offsetWidth) {
+                     that.ui.lineText.style.width = elem.offsetWidth + 'px';
+                  }
+               }
+               that.ui.lineText.style.width = (that.ui.lineText.offsetWidth + 10) + 'px';
+               that.Layout();
+            });
+         });
+      }, (err) => {
+         console.log(err);
+      });*/
+   }, // buildText
+   Layout: function () {
+      var h = window.innerHeight - this.ui.self.offsetTop - 10;
+      this.ui.self.style.height = h + 'px';
+      if (this.ui.selection) {
+         this.ui.selection.style.width = this.ui.lineText.offsetWidth + 'px';
+      }
+   }, // Layout
+   Dispose: function () {
+      this.unbindEvents();
+   }, // Dispose
+   highlightLines: function (startLineNumber, endLineNumber) {
+       if (startLineNumber <= 0) startLineNumber = 1;
+       if (endLineNumber > this.env.lines.length) endLineNumber = this.env.lines.length;
+       if (startLineNumber > endLineNumber) {
+          startLineNumber += endLineNumber;
+          endLineNumber = startLineNumber - endLineNumber;
+          startLineNumber = startLineNumber - endLineNumber;
+       }
+       var lineHeight = this.ui.lineNumber.children[0].offsetHeight;
+       var start = (startLineNumber - 1) * lineHeight;
+       var end = endLineNumber * lineHeight;
+       if (!this.ui.selection) {
+          this.ui.selection = document.createElement('div');
+          this.ui.selection.className = 'vcode-selection';
+          this.ui.selection.style.position = 'relative';
+          this.ui.lineText.parentNode.insertBefore(this.ui.selection, this.ui.lineText);
+       }
+       this.ui.selection.style.display = 'block';
+       this.ui.lineText.style.top = (start - end) + 'px';
+       this.ui.selection.style.top = (start) + 'px';
+       this.ui.selection.style.height = (end - start) + 'px';
+       var selectionW = this.ui.lineText.offsetWidth + 8;
+       var viewW = this.ui.container.offsetWidth - this.ui.lineNumber.offsetWidth;
+       if (selectionW < viewW) selectionW = viewW;
+       this.ui.selection.style.width = selectionW + 'px';
+   }, // highlightLines
+   scroll2Line: function (startLineNumber, endLineNumber) {
+      var lineHeight = this.ui.lineNumber.children[0].offsetHeight;
+      var viewHeight = this.ui.self.offsetHeight;
+      var start = (startLineNumber - 1) * lineHeight;
+      var end = (endLineNumber - 1) * lineHeight;
+      var scrollTo = start;
+      if (end - start < viewHeight) {
+         scrollTo -= (viewHeight - (end - start)) / 2;
+      }
+      this.ui.self.scrollTo(0, scrollTo);
+   }, // scroll2Line
+   _cacheLineXIndex: function (lineNumber) {
+      var line = this.env.lines[lineNumber - 1];
+      var lineX = [];
+      this.lineXIndex[lineNumber - 1] = lineX;
+      for (var i = 0, n = line.length, last = 0, itab = 0; i < n; i++) {
+         var ch = line.charAt(i);
+         if (ch === '\t') {
+            ch = '';
+            var m = 4 - itab % 4;
+            itab += m - 1;
+            for (var j = 0; j < m; j++) { ch += ' '; }
+         }
+         last += this.ui.pen.measureText(ch).width;
+         lineX.push(last);
+         itab++;
+      }
+      return lineX;
+   }, // _cacheLineXIndex
+   mouse2textPosition: function (x, y) {
+      var lineHeight = this.ui.lineNumber.children[0].offsetHeight;
+      if (!lineHeight) return null;
+      var lineNumber = Math.floor(y / lineHeight + 1);
+      var line = this.env.lines[lineNumber - 1];
+      var column = -1;
+      if (!line) { return { lineNumber: lineNumber, column: column }; }
+      var lineX = this.lineXIndex[lineNumber - 1];
+      if (!lineX) { lineX = this._cacheLineXIndex(lineNumber); }
+      // TODO: binary search
+      if (x >= 0) {
+         for (var i = 0, n = line.length; i < n; i++) {
+            if (x < lineX[i]) {
+               column = i + 1;
+               break;
+            }
+         }
+      }
+      return { lineNumber: lineNumber, column: column };
+   }, // mouse2textPosition
+   text2mousePosition: function (lineNumber, column) {
+      var lineHeight = this.ui.lineNumber.children[0].offsetHeight;
+      if (!lineHeight) return null;
+      if (lineNumber < 1 || lineNumber > this.env.lines.length) return null;
+      var bottom = lineNumber * lineHeight;
+      var top = bottom - lineHeight;
+      var line = this.env.lines[lineNumber - 1];
+      if (!line) { return null; }
+      if (column < 1 || column > line.length) { return null; }
+      var lineX = this.lineXIndex[lineNumber - 1];
+      if (!lineX) { lineX = this._cacheLineXIndex(lineNumber); }
+      var right = lineX[column - 1];
+      var left = column === 1?0:lineX[column - 2];
+      return { top: top, bottom: bottom, left: left, right: right };
+   }, // text2mousePosition
+   eventMouseMove: function (evt, self, host) {
+      var position = self.mouse2textPosition(
+         evt.clientX + host.scrollLeft - host.offsetLeft - self.ui.lineNumber.offsetWidth - 8,
+         evt.clientY + host.scrollTop - host.offsetTop
+      );
+      var piece = self._codeIntelligence.Extract(
+         position.lineNumber, position.column
+      );
+      if (!self.ui.tooltip) {
+         self.ui.tooltip = document.createElement('div');
+         self.ui.tooltip.style.display = 'none';
+         self.ui.tooltip.style.position = 'fixed';
+         // self.ui.tooltip.style.backgroundColor = 'green';
+         // self.ui.tooltip.style.height = '2px';
+         var icon = document.createElement('div');
+         icon.innerHTML = MOUSE_ICON;
+         icon.style.width = '10px';
+         icon.style.height = '10px';
+         var span = document.createElement('span');
+         span.innerHTML = 'click';
+         span.style.position = 'relative';
+         span.style.display = 'inline-block';
+         span.style.top = '-12px';
+         span.style.left = '10px';
+         span.style.color = '#ddd';
+         icon.appendChild(span);
+         self.ui.tooltip.appendChild(icon);
+         self.ui.self.appendChild(self.ui.tooltip);
+      }
+      if (piece.isNull()) {
+         self.ui.tooltip.style.display = 'none';
+      }
+      if (!piece.last) {
+         // TODO: if mouse hover on a span with class name 'mtk'
+         //       get text from the span; it will be helpful to get sth like sys.h, ...
+         var pieceStr = piece.text(self.env.lines);
+         if (!pieceStr) return;
+         console.log(pieceStr);
+         if (piece.startLineNumber !== piece.endLineNumber) return;
+         var startRect = self.text2mousePosition(piece.startLineNumber, piece.startColumn);
+         var endRect = self.text2mousePosition(piece.endLineNumber, piece.endColumn);
+         self.ui.tooltip.style.top = (startRect.bottom - host.scrollTop + host.offsetTop - 3) + 'px';
+         self.ui.tooltip.style.left = (startRect.left + self.ui.lineText.offsetLeft - host.scrollLeft + 5) + 'px';
+         self.ui.tooltip.style.width = (endRect.right - startRect.left) + 'px';
+         self.ui.tooltip.style.display = 'block';
+      }
+   }, // eventMouseMove
+   navgiateToLine: function (hash) {
+      // e.g. #L100 to Line 100
+      //      #L100-200 to Line 100 - 200,
+      //      if Line 100 - 200 can be displayed, show in center
+      //      if not, show at least the first line as Line 100
+      var match = /^#L(\d+)(-(\d+))?$/.exec(hash);
+      if (!match) {
+         this.ui.lineText.style.top = '0';
+         if (this.ui.selection) {
+            this.ui.selection.style.display = 'none';
+         }
+         return;
+      }
+      var L1 = parseInt(match[1]) || 1;
+      var L2 = parseInt(match[3]) || L1;
+      this.highlightLines(L1, L2);
+      this.scroll2Line(L1, L2);
+   }, // navgiateToLine
+   eventHashChange: function (evt, self, host) {
+      if (self._skipNavigateToLine) {
+         self._skipNavigateToLine = false;
+         return;
+      }
+      self.navgiateToLine(window.location.hash);
+   }, // eventHashChange
+   eventSelectionChange: function (evt, self, host) {
+      Bounce('viewer.plugin.text.selection', 100, () => {
+         var selection = document.getSelection();
+         // .baseNode, .extentNode
+         var startScope = findScope(selection.anchorNode);
+         var endScope = findScope(selection.focusNode);
+         if (!startScope || !endScope) return;
+         var startLineElem = getTargetElem(startScope, selection.anchorOffset);
+         var endLineElem = getTargetElem(endScope, selection.focusOffset);
+         if (!startLineElem || !endLineElem) return;
+         var start = self.mouse2textPosition(0, startLineElem.offsetTop);
+         var end = self.mouse2textPosition(0, endLineElem.offsetTop);
+         if (!start || !end) return;
+         self.highlightLines(start.lineNumber, end.lineNumber);
+         self._skipNavigateToLine = true;
+         if (start.lineNumber == end.lineNumber) {
+            window.location.hash = `#L${start.lineNumber}`;
+         } else {
+            window.location.hash = `#L${start.lineNumber}-${end.lineNumber}`;
+         }
+
+         function getTargetElem(scope, selectionOffset) {
+            var elem = scope[2];
+            if (elem) return elem;
+            var focus = scope[1];
+            var target = focus.children[selectionOffset];
+            if (!target) return null;
+            if (target.tagName.toLowerCase() === 'br') {
+               if (target.previousSibling) return target.previousSibling;
+               return target.nextSibling;
+            }
+            return target;
+         }
+
+         function findScope(elem) {
+            var scope = [];
+            while (elem) {
+               if (elem.classList && elem.classList.contains('vcode-srcv-text')) {
+                  scope.unshift(elem);
+                  return scope;
+               }
+               scope.unshift(elem);
+               elem = elem.parentNode;
+            }
+            return null;
+         }
+      });
+   }, // eventSelectionChange
+   eventTextScroll: function (evt, self, host) {
+      if (self.ui.tooltip) {
+         if (!self.ui.tooltipScrollX) self.ui.tooltipScrollX = 0;
+         if (!self.ui.tooltipScrollY) self.ui.tooltipScrollY = 0;
+         self.ui.tooltip.style.left = (self.ui.tooltip.offsetLeft - host.scrollLeft + self.ui.tooltipScrollX) + 'px';
+         self.ui.tooltip.style.top = (self.ui.tooltip.offsetTop - host.scrollTop + self.ui.tooltipScrollY) + 'px';
+         self.ui.tooltipScrollX = host.scrollLeft;
+         self.ui.tooltipScrollY = host.scrollTop;
+      }
+   }, // eventTextScroll
+   bindEvents: function () {
+      this.On('.vcode-srcv-container', 'mousemove', this.eventMouseMove);
+      this.On('.vcode-srcv-container', 'scroll', this.eventTextScroll);
+      this.On('document', 'selectionchange', this.eventSelectionChange);
+      this.On('window', 'hashchange', this.eventHashChange);
+   }, // bindEvents
+   unbindEvents: function () {
+      this.Off('.vcode-srcv-container', 'mousemove');
+      this.Off('.vcode-srcv-container', 'scroll');
+      this.Off('document', 'selectionchange');
+      this.Off('window', 'hashchange');
+   } // unbindEvents
+};
+
+new SourceViewer(document.querySelector('#hello'), 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("hello world")\n}', 'a');
+
+</script>
+</body>
+</html>
