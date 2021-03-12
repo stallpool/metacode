@@ -245,6 +245,14 @@ function Piece() {
 }
 Piece.prototype = {
    isNull: function () { return this.startLineNumber <= 0; },
+   setSymbol: function (lineNumber, column, length, data) {
+      this.startLineNumber = lineNumber;
+      this.startColumn = column;
+      this.endLineNumber = lineNumber;
+      this.endColumn = column + length;
+      this.data = data;
+      return this;
+   },
    text: function (lines) {
       // assume not isNull()
       if (this.endLineNumber <= 0) return '';
@@ -264,11 +272,13 @@ Piece.prototype = {
       return str;
    },
    copyTo: function (another) {
+      if (!another) antoher = new Piece();
       another.startLineNumber = this.startLineNumber;
       another.startColumn = this.startColumn;
       another.endLineNumber = this.endLineNumber;
       another.endColumn = this.endColumn;
       another.data = this.data;
+      return another;
    }
 };
 
@@ -418,6 +428,46 @@ SourceViewer.prototype = {
    Dispose: function () {
       this.unbindEvents();
    }, // Dispose
+   highlightSyntax: function (symbols, startLineNumber, endLineNumber, styleFn) {
+      var symbolByLine = {};
+      symbols = symbols.filter(function (s) {
+         return s.startLineNumber >= startLineNumber && s.startLineNumber <= endLineNumber
+      });
+      for (var i = 0, n = symbols.length; i < n; i++) {
+         var s = symbols[i];
+         if (!s || s.startLineNumber < 0) continue;
+         var sl = symbolByLine[s.startLineNumber];
+         if (!sl) {
+            sl = [];
+            symbolByLine[s.startLineNumber] = sl;
+         }
+         sl.push(s);
+      }
+      for (var i = startLineNumber; i <= endLineNumber; i++) {
+         var sl = symbolByLine[i];
+         // TODO: token conflicts (position overlap)
+         if (sl.length) sl.sort(function (a, b) { return a.startColumn - b.startColumn; });
+         var lineDiv = this.ui.lineText.children[i - 1];
+         var lineText = this.env.lines[i - 1];
+         var cur = 0;
+         // TODO: assume no event registered
+         lineDiv.innerHTML = '';
+         for (var j = 0, n = sl.length; j < n; j++) {
+            var s = sl[j];
+            if (cur < s.startColumn - 1) {
+               lineDiv.appendChild(document.createTextNode(lineText.substring(cur, s.startColumn - 1)));
+            }
+            var span = document.createElement('span');
+            span.appendChild(document.createTextNode(lineText.substring(s.startColumn - 1, s.endColumn - 1)));
+            styleFn && styleFn(span, s, lineText);
+            cur = s.endColumn - 1;
+            lineDiv.appendChild(span);
+         }
+         if (cur < lineText.length) {
+            lineDiv.appendChild(document.createTextNode(lineText.substring(cur)));
+         }
+      }
+   },
    highlightLines: function (startLineNumber, endLineNumber) {
        if (startLineNumber <= 0) startLineNumber = 1;
        if (endLineNumber > this.env.lines.length) endLineNumber = this.env.lines.length;
@@ -441,7 +491,7 @@ SourceViewer.prototype = {
        this.ui.selection.style.height = (end - start) + 'px';
        var selectionW = this.ui.lineText.offsetWidth + 8;
        var viewW = this.ui.container.offsetWidth - this.ui.lineNumber.offsetWidth;
-       if (selectionW < viewW) selectionW = viewW;
+       if (selectionW < viewW) selectionW = viewW - 15;
        this.ui.selection.style.width = selectionW + 'px';
    }, // highlightLines
    scroll2Line: function (startLineNumber, endLineNumber) {
@@ -550,7 +600,7 @@ SourceViewer.prototype = {
          var startRect = self.text2mousePosition(piece.startLineNumber, piece.startColumn);
          var endRect = self.text2mousePosition(piece.endLineNumber, piece.endColumn);
          self.ui.tooltip.style.top = (startRect.bottom - host.scrollTop + host.offsetTop - 3) + 'px';
-         self.ui.tooltip.style.left = (startRect.left + self.ui.lineText.offsetLeft - host.scrollLeft + 5) + 'px';
+         self.ui.tooltip.style.left = (startRect.left + self.ui.lineText.offsetLeft - host.scrollLeft + host.offsetLeft - 3) + 'px';
          self.ui.tooltip.style.width = (endRect.right - startRect.left) + 'px';
          self.ui.tooltip.style.display = 'block';
       }
