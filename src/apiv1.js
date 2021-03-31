@@ -22,6 +22,7 @@ function parseSearchTarget(target) {
    const parts = tobj.path.split('/');
    const last0 = parts.pop();
    const last = last0 || parts.pop();
+   if (!last) return null;
    if (last.charAt(0) === '@') {
       tobj.ref = last.substring(1);
    } else {
@@ -103,8 +104,8 @@ const api = {
       }
       case 'gitlab:': {
          env.origin_path = tobj.path;
-         if (tobj.path.startsWith('#')) {
-            // e.g. gitlab://#123/@master
+         if (tobj.path.startsWith(':')) {
+            // e.g. gitlab://:123/@master
             tobj.path = parseInt(tobj.path.substring(1), 10);
             const project = i_project.listByServer('gitlab').filter(
                (project) => project.id === tobj.path
@@ -130,7 +131,7 @@ const api = {
          i_log.info(
             options.json.username,
             '--> search: (gitlab)',
-            config.project_id, origin_path, config.ref || '',
+            config.project_id, env.origin_path, config.ref || '',
             '--|', query
          );
          i_gitlab.search(config).then((data) => {
